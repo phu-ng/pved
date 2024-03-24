@@ -1,11 +1,19 @@
 mod models;
+mod http_client_utils;
 
 use std::collections::HashMap;
 use actix_web::{get, App, HttpServer, HttpResponse};
 use actix_web::http::header::{ContentType};
 use reqwest::{Error, header};
-use crate::models::{NodeData, QemuData, Target, Labels, NetworkInterfaceData};
+use crate::models::{NodeData, QemuData, Target, Labels, NetworkInterfaceData, NetworkInterface};
 use std::env;
+use reqwest::Client;
+use lazy_static::lazy_static;
+
+
+lazy_static! {
+    static ref HTTP_CLIENT: Client = http_client_utils::create_custom_http_client();
+}
 
 #[get("/")]
 async fn discover() -> HttpResponse {
@@ -51,8 +59,7 @@ async fn main() -> std::io::Result<()> {
 }
 
 async fn get_nodes(base_url: &str, api_key: &str) -> Result<Vec<String>, Error> {
-    let client = reqwest::Client::new();
-
+    let client = &*HTTP_CLIENT;
     let resp = client.get(base_url.to_string() + "/nodes")
         .header(header::AUTHORIZATION, api_key)
         .send()
@@ -69,7 +76,7 @@ async fn get_nodes(base_url: &str, api_key: &str) -> Result<Vec<String>, Error> 
 }
 
 async fn get_qemus(base_url: &str, api_key: &str, nodes: Vec<String>) -> Result<HashMap<String, Vec<u32>>, Error> {
-    let client = reqwest::Client::new();
+    let client = &*HTTP_CLIENT;
     let mut qemus = HashMap::new();
 
     for node in nodes {
@@ -98,8 +105,7 @@ async fn get_qemus(base_url: &str, api_key: &str, nodes: Vec<String>) -> Result<
 }
 
 async fn get_ips(base_url: &str, api_key: &str, vms: HashMap<String, Vec<u32>>) -> Result<Vec<String>, Error> {
-    // TODO: 1 client
-    let client = reqwest::Client::new();
+    let client = &*HTTP_CLIENT;
     let mut ipv6s: Vec<String> = vec![];
 
     for (node, vm_ids) in vms {
@@ -112,24 +118,25 @@ async fn get_ips(base_url: &str, api_key: &str, vms: HashMap<String, Vec<u32>>) 
                 .await?;
 
             let interfaces = resp.data.result;
-            // TODO: tach thanh function
-            for interface in interfaces.iter() {
-                if interface.name.contains("eth") || interface.name.contains("ens") {
-                    for ip in interface.ip_addresses.iter() {
-                        // TODO: check xem co cach viet ngan hon ko
-                        // TODO: return ipv4 neu ko co ipv6
-                        if ip.ip_address_type == "ipv6" {
-                            if is_public_ipv6(&ip.ip_address.clone()) {
-                                ipv6s.push(ip.ip_address.clone())
-                            }
-                        }
-                    }
-                }
-            }
+            ipv6s = interfaces.iter()
+                .filter(|interface|
+                    interface.name.contains("eth") || interface.name.contains("ens"))
+                .flat_map(|interface| get_ips_v6(interface).into_iter())
+                .collect();
         }
     }
 
     return Ok(ipv6s);
+}
+
+fn get_ips_v6(interface: &NetworkInterface) -> Vec<String> {
+    let mut ipv6s: Vec<String> = Vec::new();
+    for ip in &interface.ip_addresses {
+        if ip.ip_address_type == "ipv6" && is_public_ipv6(&ip.ip_address) {
+            ipv6s.push(ip.ip_address.to_string());
+        }
+    }
+    ipv6s
 }
 
 fn is_public_ipv6(ipv6: &String) -> bool {
@@ -189,6 +196,3 @@ mod tests {
         assert_eq!(ips, vec!["2405:4803:fe85:1e0:be24:11ff:fe51:9939".to_string()])
     }
 }
-
-// TODO: check ca lxc
-// TODO: check status, neu tat rui thi loai
