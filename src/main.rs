@@ -9,12 +9,13 @@ use std::env;
 
 #[get("/")]
 async fn discover() -> HttpResponse {
-    let base_url = env::var("BASE_URL").unwrap().as_str();
-    let api_key = env::var("API_KEY").unwrap().as_str();
+    // TODO: handle error khi khong tim thay bien - bo unwrap()
+    let base_url = env::var("BASE_URL").unwrap();
+    let api_key = env::var("API_KEY").unwrap();
 
-    let nodes = get_nodes(base_url, api_key).await.unwrap();
-    let qemus = get_qemus(base_url, api_key, nodes).await.unwrap();
-    let ips = get_ips(base_url, api_key, qemus).await.unwrap();
+    let nodes = get_nodes(base_url.as_str(), api_key.as_str()).await.unwrap();
+    let qemus = get_qemus(base_url.as_str(), api_key.as_str(), nodes).await.unwrap();
+    let ips = get_ips(base_url.as_str(), api_key.as_str(), qemus).await.unwrap();
     let mut targets = Vec::new();
 
     for ip in ips {
@@ -36,6 +37,10 @@ async fn discover() -> HttpResponse {
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    // Load environment variables from .env file.
+    // Fails if .env file not found, not readable or invalid.
+    dotenvy::dotenv().unwrap();
+
     HttpServer::new(|| {
         App::new()
             .service(discover)
