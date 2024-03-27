@@ -1,29 +1,22 @@
 mod models;
-mod http_client_utils;
+mod proxmox;
 
 use std::collections::HashMap;
 use actix_web::{get, App, HttpServer, HttpResponse};
 use actix_web::http::header::{ContentType};
-use reqwest::{Error, header};
+use reqwest::{Error};
 use crate::models::{NodeData, QemuData, Target, Labels, NetworkInterfaceData, NetworkInterface};
 use std::env;
-use reqwest::Client;
-use lazy_static::lazy_static;
 
-
-lazy_static! {
-    static ref HTTP_CLIENT: Client = http_client_utils::create_custom_http_client();
-}
 
 #[get("/")]
-async fn discover() -> HttpResponse {
+async fn discover(data: actix_web::web::Data<AppState>) -> HttpResponse {
     // TODO: handle error khi khong tim thay bien - bo unwrap()
     let base_url = env::var("BASE_URL").unwrap();
-    let api_key = env::var("API_KEY").unwrap();
 
-    let nodes = get_nodes(base_url.as_str(), api_key.as_str()).await.unwrap();
-    let qemus = get_qemus(base_url.as_str(), api_key.as_str(), nodes).await.unwrap();
-    let ips = get_ips(base_url.as_str(), api_key.as_str(), qemus).await.unwrap();
+    let nodes = get_nodes(base_url.as_str(), &data.proxmox_http_client).await.unwrap();
+    let qemus = get_qemus(base_url.as_str(), &data.proxmox_http_client, nodes).await.unwrap();
+    let ips = get_ips(base_url.as_str(), &data.proxmox_http_client, qemus).await.unwrap();
     let mut targets = Vec::new();
 
     for ip in ips {
@@ -43,14 +36,29 @@ async fn discover() -> HttpResponse {
         .json(vec![target])
 }
 
+#[derive(Clone)]
+struct AppState {
+    proxmox_http_client: reqwest::Client,
+}
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     // Load environment variables from .env file.
     // Fails if .env file not found, not readable or invalid.
     dotenvy::dotenv().unwrap();
 
-    HttpServer::new(|| {
+    // Enable logging
+    // Set log level by adding env RUST_LOG=info/debug/...
+    env_logger::init();
+
+    let api_key = env::var("API_KEY").unwrap();
+    let data = AppState {
+        proxmox_http_client: proxmox::default_proxmox_http_client(&api_key)
+    };
+
+    HttpServer::new(move || {
         App::new()
+            .app_data(actix_web::web::Data::new(data.clone()))
             .service(discover)
     })
         .bind(("0.0.0.0", 8080))?
@@ -58,10 +66,8 @@ async fn main() -> std::io::Result<()> {
         .await
 }
 
-async fn get_nodes(base_url: &str, api_key: &str) -> Result<Vec<String>, Error> {
-    let client = &*HTTP_CLIENT;
-    let resp = client.get(base_url.to_string() + "/nodes")
-        .header(header::AUTHORIZATION, api_key)
+async fn get_nodes(base_url: &str, proxmox_http_client: &reqwest::Client) -> Result<Vec<String>, Error> {
+    let resp = proxmox_http_client.get(base_url.to_string() + "/nodes")
         .send()
         .await?
         .json::<NodeData>()
@@ -75,15 +81,13 @@ async fn get_nodes(base_url: &str, api_key: &str) -> Result<Vec<String>, Error> 
     return Ok(nodes);
 }
 
-async fn get_qemus(base_url: &str, api_key: &str, nodes: Vec<String>) -> Result<HashMap<String, Vec<u32>>, Error> {
-    let client = &*HTTP_CLIENT;
+async fn get_qemus(base_url: &str, proxmox_http_client: &reqwest::Client, nodes: Vec<String>) -> Result<HashMap<String, Vec<u32>>, Error> {
     let mut qemus = HashMap::new();
 
     for node in nodes {
         let mut qemu_ids = vec![];
 
-        let resp = client.get(base_url.to_string() + "/nodes/" + node.as_str() + "/qemu")
-            .header(header::AUTHORIZATION, api_key)
+        let resp = proxmox_http_client.get(base_url.to_string() + "/nodes/" + node.as_str() + "/qemu")
             .send()
             .await?
             .json::<QemuData>()
@@ -104,14 +108,12 @@ async fn get_qemus(base_url: &str, api_key: &str, nodes: Vec<String>) -> Result<
     return Ok(qemus);
 }
 
-async fn get_ips(base_url: &str, api_key: &str, vms: HashMap<String, Vec<u32>>) -> Result<Vec<String>, Error> {
-    let client = &*HTTP_CLIENT;
+async fn get_ips(base_url: &str, proxmox_http_client: &reqwest::Client, vms: HashMap<String, Vec<u32>>) -> Result<Vec<String>, Error> {
     let mut ipv6s: Vec<String> = vec![];
 
     for (node, vm_ids) in vms {
         for id in vm_ids.iter() {
-            let resp = client.get(base_url.to_string() + "/nodes/" + node.as_str() + "/qemu/" + id.to_string().as_str() + "/agent/network-get-interfaces")
-                .header(header::AUTHORIZATION, api_key)
+            let resp = proxmox_http_client.get(base_url.to_string() + "/nodes/" + node.as_str() + "/qemu/" + id.to_string().as_str() + "/agent/network-get-interfaces")
                 .send()
                 .await?
                 .json::<NetworkInterfaceData>()
@@ -178,11 +180,11 @@ mod tests {
         server.mock("GET", "/nodes")
             .with_status(201)
             .with_header("content-type", "application/json")
-            .with_header("authorization", "1234")
             .with_body(serde_json::to_string(&node_data).unwrap())
             .create();
 
-        let nodes = get_nodes(url.as_str(), api_key).await.unwrap();
+        let proxmox_http_client = proxmox::default_proxmox_http_client(api_key);
+        let nodes = get_nodes(url.as_str(), &proxmox_http_client).await.unwrap();
         assert_eq!(nodes, vec!["k4", "x300"])
     }
 
@@ -194,6 +196,7 @@ mod tests {
         // Use one of these addresses to configure your client
         let url = server.url();
         let api_key = "1234";
+        let proxmox_http_client = proxmox::default_proxmox_http_client(api_key);
 
         let nodes = vec!["node1".to_string(), "node2".to_string()];
         let node1_qemu_100 = Qemu::new("running".to_string(), "vm1".to_string(), Some("container;k8s".to_string()), 100);
@@ -221,7 +224,7 @@ mod tests {
         expected.entry("node1".to_string()).or_insert(vec![101]);
         expected.entry("node2".to_string()).or_insert(vec![200, 201]);
 
-        let qemu_ids = get_qemus(url.as_str(), api_key, nodes).await.unwrap();
+        let qemu_ids = get_qemus(url.as_str(), &proxmox_http_client, nodes).await.unwrap();
         assert_eq!(qemu_ids, expected)
     }
 
@@ -233,6 +236,7 @@ mod tests {
         // Use one of these addresses to configure your client
         let url = server.url();
         let api_key = "1234";
+        let proxmox_http_client = proxmox::default_proxmox_http_client(api_key);
 
         let mut qemu_ids = HashMap::new();
         qemu_ids.entry("node1".to_string()).or_insert(vec![101, 102]);
@@ -272,7 +276,7 @@ mod tests {
             .with_body(serde_json::to_string(&qemu_102_net_interface_data).unwrap())
             .create();
 
-        let ips = get_ips(url.as_str(), api_key, qemu_ids).await.unwrap();
+        let ips = get_ips(url.as_str(), &proxmox_http_client, qemu_ids).await.unwrap();
         assert_eq!(ips, vec!["2404:6800:4005:815::200e".to_string()])
     }
 }
