@@ -252,8 +252,7 @@ mod tests {
 
         let qemu_102_net_interface_ens18 = NetworkInterface::new("00:00:00:00:00:00".to_string(), "ens18".to_string(),
                                                                  vec![IpAddress::new("ipv4".to_string(), "192.168.1.35".to_string(), 24),
-                                                                      IpAddress::new("ipv6".to_string(), "2404:6800:4005:815::200e".to_string(), 64),
-                                                                      IpAddress::new("ipv6".to_string(), "2504:6800:4005:815::200d".to_string(), 64)]);
+                                                                      IpAddress::new("ipv6".to_string(), "2404:6800:4005:815::200e".to_string(), 64)]);
         let qemu_102_net_interface_lo = qemu_101_net_interface_lo.clone();
         let qemu_102_net_interface_docker = qemu_101_net_interface_docker.clone();
 
