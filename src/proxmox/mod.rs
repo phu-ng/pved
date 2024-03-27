@@ -1,8 +1,7 @@
 use std::collections::HashMap;
 use std::time::Duration;
 use reqwest::{Client, ClientBuilder, Error, header};
-use crate::{proxmox};
-use crate::models::{NetworkInterface, NetworkInterfaceData, NodeData, QemuData};
+use crate::models::{IpAddress, NetworkInterface, NetworkInterfaceData, NodeData, QemuData};
 use crate::utils::is_public_ipv6;
 
 pub fn default_proxmox_http_client(api_key: &str) -> Client {
@@ -61,37 +60,33 @@ pub async fn get_qemus(base_url: &str, proxmox_http_client: &reqwest::Client, no
     return Ok(qemus);
 }
 
-pub async fn get_ips(base_url: &str, proxmox_http_client: &reqwest::Client, vms: HashMap<String, Vec<u32>>) -> Result<Vec<String>, Error> {
-    let mut ipv6s: Vec<String> = vec![];
+pub async fn get_ips(base_url: &str, proxmox_http_client: &reqwest::Client, qemus: HashMap<String, Vec<u32>>) -> Result<Vec<String>, Error> {
+    let mut interfaces: Vec<NetworkInterface> = vec![];
 
-    for (node, vm_ids) in vms {
-        for id in vm_ids.iter() {
+    for (node, qemu_ids) in qemus {
+        for id in qemu_ids.iter() {
             let resp = proxmox_http_client.get(base_url.to_string() + "/nodes/" + node.as_str() + "/qemu/" + id.to_string().as_str() + "/agent/network-get-interfaces")
                 .send()
                 .await?
                 .json::<NetworkInterfaceData>()
                 .await?;
 
-            let interfaces = resp.data.result;
-            ipv6s = interfaces.iter()
-                .filter(|interface|
-                    interface.name.contains("eth") || interface.name.contains("ens"))
-                .flat_map(|interface| get_ips_v6(interface).into_iter())
-                .collect();
+            interfaces.extend(resp.data.result);
         }
     }
+
+    interfaces.retain(|interface| interface.name.contains("eth") || interface.name.contains("ens"));
+    let mut addresses: Vec<IpAddress> = vec![];
+    for interface in interfaces {
+        addresses.extend(interface.ip_addresses);
+    }
+
+    addresses.retain(|address| address.ip_address_type == "ipv6" && is_public_ipv6(&address.ip_address));
+    let ipv6s = addresses.iter()
+        .map(|address| &address.ip_address).cloned()
+        .collect();
 
     return Ok(ipv6s);
-}
-
-fn get_ips_v6(interface: &NetworkInterface) -> Vec<String> {
-    let mut ipv6s: Vec<String> = Vec::new();
-    for ip in &interface.ip_addresses {
-        if ip.ip_address_type == "ipv6" && is_public_ipv6(&ip.ip_address) {
-            ipv6s.push(ip.ip_address.to_string());
-        }
-    }
-    ipv6s
 }
 
 #[cfg(test)]
@@ -120,7 +115,7 @@ mod tests {
             .with_body(serde_json::to_string(&node_data).unwrap())
             .create();
 
-        let proxmox_http_client = proxmox::default_proxmox_http_client(api_key);
+        let proxmox_http_client = default_proxmox_http_client(api_key);
         let nodes = get_nodes(url.as_str(), &proxmox_http_client).await.unwrap();
         assert_eq!(nodes, vec!["k4", "x300"])
     }
@@ -133,7 +128,7 @@ mod tests {
         // Use one of these addresses to configure your client
         let url = server.url();
         let api_key = "1234";
-        let proxmox_http_client = proxmox::default_proxmox_http_client(api_key);
+        let proxmox_http_client = default_proxmox_http_client(api_key);
 
         let nodes = vec!["node1".to_string(), "node2".to_string()];
         let node1_qemu_100 = Qemu::new("running".to_string(), "vm1".to_string(), Some("container;k8s".to_string()), 100);
@@ -173,10 +168,10 @@ mod tests {
         // Use one of these addresses to configure your client
         let url = server.url();
         let api_key = "1234";
-        let proxmox_http_client = proxmox::default_proxmox_http_client(api_key);
+        let proxmox_http_client = default_proxmox_http_client(api_key);
 
         let mut qemu_ids = HashMap::new();
-        qemu_ids.entry("node1".to_string()).or_insert(vec![101, 102]);
+        qemu_ids.entry("node1".to_string()).or_insert(vec![101, 102, 103]);
 
         let qemu_101_net_interface_eth0 = NetworkInterface::new("00:00:00:00:00:00".to_string(), "eth0".to_string(),
                                                                 vec![IpAddress::new("ipv4".to_string(), "192.168.1.34".to_string(), 24),
@@ -193,26 +188,36 @@ mod tests {
         let qemu_102_net_interface_lo = qemu_101_net_interface_lo.clone();
         let qemu_102_net_interface_docker = qemu_101_net_interface_docker.clone();
 
+        let qemu_103_net_interface_ens18 = NetworkInterface::new("00:00:00:00:00:00".to_string(), "ens18".to_string(),
+                                                                 vec![IpAddress::new("ipv4".to_string(), "192.168.1.36".to_string(), 24),
+                                                                      IpAddress::new("ipv6".to_string(), "2404:6800:4005:815::200d".to_string(), 64)]);
+
         let qemu_101_net_interface_data = NetworkInterfaceData::new(
             NetworkInterfaceResult::new(vec![qemu_101_net_interface_docker, qemu_101_net_interface_eth0, qemu_101_net_interface_lo]));
         let qemu_102_net_interface_data = NetworkInterfaceData::new(
             NetworkInterfaceResult::new(vec![qemu_102_net_interface_docker, qemu_102_net_interface_lo, qemu_102_net_interface_ens18]));
+        let qemu_103_net_interface_data = NetworkInterfaceData::new(
+            NetworkInterfaceResult::new(vec![qemu_103_net_interface_ens18]));
 
         server.mock("GET", "/nodes/node1/qemu/101/agent/network-get-interfaces")
             .with_status(201)
             .with_header("content-type", "application/json")
-            .with_header("authorization", "1234")
             .with_body(serde_json::to_string(&qemu_101_net_interface_data).unwrap())
             .create();
 
         server.mock("GET", "/nodes/node1/qemu/102/agent/network-get-interfaces")
             .with_status(201)
             .with_header("content-type", "application/json")
-            .with_header("authorization", "1234")
             .with_body(serde_json::to_string(&qemu_102_net_interface_data).unwrap())
             .create();
 
+        server.mock("GET", "/nodes/node1/qemu/103/agent/network-get-interfaces")
+            .with_status(201)
+            .with_header("content-type", "application/json")
+            .with_body(serde_json::to_string(&qemu_103_net_interface_data).unwrap())
+            .create();
+
         let ips = get_ips(url.as_str(), &proxmox_http_client, qemu_ids).await.unwrap();
-        assert_eq!(ips, vec!["2404:6800:4005:815::200e".to_string()])
+        assert_eq!(ips, vec!["2404:6800:4005:815::200e".to_string(), "2404:6800:4005:815::200d".to_string()])
     }
 }

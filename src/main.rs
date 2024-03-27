@@ -2,7 +2,6 @@ mod models;
 mod proxmox;
 mod utils;
 
-use std::collections::HashMap;
 use actix_web::{get, App, HttpServer, HttpResponse};
 use actix_web::http::header::{ContentType};
 use crate::models::{Target, Labels};
