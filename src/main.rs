@@ -9,6 +9,7 @@ use std::env;
 use actix_web::middleware::Logger;
 use reqwest::{Client};
 use log::error;
+use serde_json::json;
 use proxmox::{get_nodes, get_qemus, get_ips};
 
 #[derive(Clone)]
@@ -35,12 +36,23 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .wrap(Logger::default())
             .app_data(actix_web::web::Data::new(data.clone()))
+            .service(healthz)
             .service(discover)
     })
         .workers(2)
         .bind(("0.0.0.0", 8080))?
         .run()
         .await
+}
+
+#[get("/healthz")]
+async fn healthz() -> HttpResponse {
+    let health = json!({"status": "Ok"});
+
+    HttpResponse::Ok()
+        .content_type(ContentType::json())
+        .insert_header(("Powered-By", "Rusty"))
+        .json(health)
 }
 
 #[get("/")]
@@ -89,7 +101,7 @@ async fn discover(data: actix_web::web::Data<AppState>) -> HttpResponse {
 
     HttpResponse::Ok()
         .content_type(ContentType::json())
-        .insert_header(("PoweredBy", "Rusty"))
+        .insert_header(("Powered-By", "Rusty"))
         .json(vec![target])
 }
 
