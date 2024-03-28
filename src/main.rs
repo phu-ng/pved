@@ -28,6 +28,8 @@ async fn main() -> std::io::Result<()> {
     env_logger::init();
 
     let api_key = env::var("API_KEY").unwrap();
+    let port = env::var("PORT").unwrap_or("8080".to_string());
+
     let data = AppState {
         proxmox_http_client: proxmox::default_proxmox_http_client(&api_key)
     };
@@ -40,7 +42,7 @@ async fn main() -> std::io::Result<()> {
             .service(discover)
     })
         .workers(2)
-        .bind("[::]:8080")?
+        .bind(format!("[::]:{}", port))?
         .run()
         .await
 }
