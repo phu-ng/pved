@@ -8,7 +8,7 @@ use crate::models::{Target, Labels};
 use std::env;
 use actix_web::middleware::Logger;
 use reqwest::{Client};
-use log::error;
+use log::{error, info};
 use serde_json::json;
 use proxmox::{get_nodes, get_qemus, get_ips};
 
@@ -21,7 +21,10 @@ struct AppState {
 async fn main() -> std::io::Result<()> {
     // Load environment variables from .env file.
     // Fails if .env file not found, not readable or invalid.
-    dotenvy::dotenv().unwrap();
+    match dotenvy::dotenv() {
+        Ok(_) => info!(".env file is found and loaded"),
+        Err(_) => info!(".env file is not found")
+    }
 
     // Enable logging
     // Set log level by adding env RUST_LOG=info/debug/...
@@ -49,7 +52,7 @@ async fn main() -> std::io::Result<()> {
 
 #[get("/healthz")]
 async fn healthz() -> HttpResponse {
-    let health = json!({"status": "Ok"});
+    let health = json!({"status": base_url});
 
     HttpResponse::Ok()
         .content_type(ContentType::json())
