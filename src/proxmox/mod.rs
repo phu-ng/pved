@@ -18,7 +18,7 @@ pub fn default_proxmox_http_client(api_key: &str) -> Client {
     client
 }
 
-pub async fn get_nodes(base_url: &str, proxmox_http_client: &reqwest::Client) -> Result<Vec<String>, Error> {
+pub async fn get_nodes(base_url: &str, proxmox_http_client: &Client) -> reqwest::Result<Vec<String>> {
     let resp = proxmox_http_client.get(base_url.to_string() + "/nodes")
         .send()
         .await?
@@ -33,7 +33,7 @@ pub async fn get_nodes(base_url: &str, proxmox_http_client: &reqwest::Client) ->
     return Ok(nodes);
 }
 
-pub async fn get_qemus(base_url: &str, proxmox_http_client: &reqwest::Client, nodes: Vec<String>) -> Result<HashMap<String, Vec<u32>>, Error> {
+pub async fn get_qemus(base_url: &str, proxmox_http_client: &Client, nodes: Vec<String>) -> Result<HashMap<String, Vec<u32>>, Error> {
     let mut qemus = HashMap::new();
 
     for node in nodes {
@@ -60,7 +60,7 @@ pub async fn get_qemus(base_url: &str, proxmox_http_client: &reqwest::Client, no
     return Ok(qemus);
 }
 
-pub async fn get_ips(base_url: &str, proxmox_http_client: &reqwest::Client, qemus: HashMap<String, Vec<u32>>) -> Result<Vec<String>, Error> {
+pub async fn get_ips(base_url: &str, proxmox_http_client: &Client, qemus: HashMap<String, Vec<u32>>) -> Result<Vec<String>, Error> {
     let mut interfaces: Vec<NetworkInterface> = vec![];
 
     for (node, qemu_ids) in qemus {

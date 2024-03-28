@@ -9,6 +9,7 @@ pub struct Node {
     r#type: String,
 }
 
+#[cfg(test)]
 impl Node {
     pub fn new(status: String, id: String, node: String, r#type: String) -> Self {
         Self { status, id, node, r#type }
@@ -20,6 +21,7 @@ pub struct NodeData {
     pub(crate) data: Vec<Node>,
 }
 
+#[cfg(test)]
 impl NodeData {
     pub fn new(data: Vec<Node>) -> Self {
         Self { data }
@@ -34,6 +36,7 @@ pub struct Qemu {
     pub(crate) vmid: u32,
 }
 
+#[cfg(test)]
 impl Qemu {
     pub fn new(status: String, name: String, tags: Option<String>, vmid: u32) -> Self {
         Self { status, name, tags, vmid }
@@ -45,6 +48,7 @@ pub struct QemuData {
     pub(crate) data: Vec<Qemu>,
 }
 
+#[cfg(test)]
 impl QemuData {
     pub fn new(data: Vec<Qemu>) -> Self {
         Self { data }
@@ -56,6 +60,7 @@ pub struct NetworkInterfaceData {
     pub(crate) data: NetworkInterfaceResult,
 }
 
+#[cfg(test)]
 impl NetworkInterfaceData {
     pub fn new(data: NetworkInterfaceResult) -> Self {
         Self { data }
@@ -67,6 +72,7 @@ pub struct NetworkInterfaceResult {
     pub(crate) result: Vec<NetworkInterface>,
 }
 
+#[cfg(test)]
 impl NetworkInterfaceResult {
     pub fn new(result: Vec<NetworkInterface>) -> Self {
         Self { result }
@@ -82,6 +88,7 @@ pub struct NetworkInterface {
     pub(crate) ip_addresses: Vec<IpAddress>,
 }
 
+#[cfg(test)]
 impl NetworkInterface {
     pub fn new(hardware_address: String, name: String, ip_addresses: Vec<IpAddress>) -> Self {
         Self { hardware_address, name, ip_addresses }
@@ -97,6 +104,7 @@ pub struct IpAddress {
     prefix: u32,
 }
 
+#[cfg(test)]
 impl IpAddress {
     pub fn new(ip_address_type: String, ip_address: String, prefix: u32) -> Self {
         Self { ip_address_type, ip_address, prefix }
