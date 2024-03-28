@@ -52,7 +52,7 @@ async fn main() -> std::io::Result<()> {
 
 #[get("/healthz")]
 async fn healthz() -> HttpResponse {
-    let health = json!({"status": base_url});
+    let health = json!({"status": "OK"});
 
     HttpResponse::Ok()
         .content_type(ContentType::json())
