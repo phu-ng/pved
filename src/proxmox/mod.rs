@@ -49,7 +49,7 @@ pub async fn get_qemus(base_url: &str, proxmox_http_client: &Client, nodes: Vec<
             if qemu.tags.is_none() {
                 continue;
             }
-            if qemu.tags.unwrap().contains("watch") {
+            if qemu.tags.unwrap().contains("watch") && qemu.status.contains("running") {
                 qemu_ids.push(qemu.vmid);
             }
         }
@@ -135,8 +135,9 @@ mod tests {
         let node1_qemu_101 = Qemu::new("running".to_string(), "vm2".to_string(), Some("watch;database".to_string()), 101);
         let node2_qemu_200 = Qemu::new("running".to_string(), "vm3".to_string(), Some("k8s;watch".to_string()), 200);
         let node2_qemu_201 = Qemu::new("running".to_string(), "vm4".to_string(), Some("watch;iot".to_string()), 201);
+        let node2_qemu_202 = Qemu::new("stopped".to_string(), "vm4".to_string(), Some("watch".to_string()), 202);
         let node1_qemus = QemuData::new(vec![node1_qemu_100, node1_qemu_101]);
-        let node2_qemus = QemuData::new(vec![node2_qemu_200, node2_qemu_201]);
+        let node2_qemus = QemuData::new(vec![node2_qemu_200, node2_qemu_201, node2_qemu_202]);
 
         server.mock("GET", "/nodes/node1/qemu")
             .with_status(201)

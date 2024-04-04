@@ -30,7 +30,7 @@ impl NodeData {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Qemu {
-    status: String,
+    pub(crate) status: String,
     name: String,
     pub(crate) tags: Option<String>,
     pub(crate) vmid: u32,
