@@ -10,7 +10,7 @@ use actix_web::middleware::Logger;
 use reqwest::{Client};
 use log::{error, info};
 use serde_json::json;
-use proxmox::{get_nodes, get_qemus, get_ips};
+use proxmox::{get_nodes, get_qemus, get_qemu_ips};
 
 #[derive(Clone)]
 struct AppState {
@@ -83,7 +83,7 @@ async fn discover(data: actix_web::web::Data<AppState>) -> HttpResponse {
             return error_response;
         }
     };
-    let ips = match get_ips(base_url.as_str(), &data.proxmox_http_client, qemus).await {
+    let ips = match get_qemu_ips(base_url.as_str(), &data.proxmox_http_client, qemus).await {
         Ok(data) => data,
         Err(e) => {
             error!("cannot get qemus network interfaces from proxmox: {}", e.to_string());

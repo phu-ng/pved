@@ -60,7 +60,7 @@ pub async fn get_qemus(base_url: &str, proxmox_http_client: &Client, nodes: Vec<
     return Ok(qemus);
 }
 
-pub async fn get_ips(base_url: &str, proxmox_http_client: &Client, qemus: HashMap<String, Vec<u32>>) -> Result<Vec<String>, Error> {
+pub async fn get_qemu_ips(base_url: &str, proxmox_http_client: &Client, qemus: HashMap<String, Vec<u32>>) -> Result<Vec<String>, Error> {
     let mut interfaces: Vec<NetworkInterface> = vec![];
 
     for (node, qemu_ids) in qemus {
@@ -87,6 +87,10 @@ pub async fn get_ips(base_url: &str, proxmox_http_client: &Client, qemus: HashMa
         .collect();
 
     return Ok(ipv6s);
+}
+
+pub async fn get_lxcs() {
+
 }
 
 #[cfg(test)]
@@ -162,7 +166,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_get_ips() {
+    async fn test_get_qemu_ips() {
         // Request a new server from the pool
         let mut server = mockito::Server::new_async().await;
 
@@ -218,7 +222,7 @@ mod tests {
             .with_body(serde_json::to_string(&qemu_103_net_interface_data).unwrap())
             .create();
 
-        let ips = get_ips(url.as_str(), &proxmox_http_client, qemu_ids).await.unwrap();
+        let ips = get_qemu_ips(url.as_str(), &proxmox_http_client, qemu_ids).await.unwrap();
         assert_eq!(ips, vec!["2404:6800:4005:815::200e".to_string(), "2404:6800:4005:815::200d".to_string()])
     }
 }
