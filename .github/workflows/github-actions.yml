@@ -1,0 +1,45 @@
+name: GitHub Actions
+run-name: Deploy Proxmox Discovery Service 🚀
+on: push
+env:
+  RUNNER_ROLE_ARN: arn:aws:iam::817667413626:role/GitHubRunner
+  REGION: ap-southeast-1
+  ECR_URI: 817667413626.dkr.ecr.ap-southeast-1.amazonaws.com/pved
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  Build-Docker-Image:
+#    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+#      - name: Set Tag
+#        run: echo "release_tag=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
+      - name: Set Short SHA
+        run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v3
+        with:
+          role-to-assume: ${{ env.RUNNER_ROLE_ARN }}
+          role-session-name: github-runner
+          aws-region: ${{ env.REGION }}
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build and push
+        uses: docker/build-push-action@v3
+        with:
+          platforms: linux/amd64,linux/arm64
+          push: true
+          context: .
+          no-cache: true
+          tags: ${{ env.ECR_URI }}:${{ env.sha_short }}
