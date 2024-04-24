@@ -11,6 +11,7 @@ use reqwest::{Client};
 use log::{error, info};
 use serde_json::json;
 use proxmox::{get_nodes, get_qemus, get_qemu_ips};
+use crate::proxmox::{get_lxc_ips, get_lxcs};
 
 #[derive(Clone)]
 struct AppState {
@@ -76,7 +77,7 @@ async fn discover(data: actix_web::web::Data<AppState>) -> HttpResponse {
             return error_response;
         }
     };
-    let qemus = match get_qemus(base_url.as_str(), &data.proxmox_http_client, nodes).await {
+    let qemus = match get_qemus(base_url.as_str(), &data.proxmox_http_client, nodes.clone()).await {
         Ok(data) => data,
         Err(e) => {
             error!("cannot get qemus from proxmox: {}", e.to_string());
@@ -90,11 +91,27 @@ async fn discover(data: actix_web::web::Data<AppState>) -> HttpResponse {
             return error_response;
         }
     };
-
+    let lxcs = match get_lxcs(base_url.as_str(), &data.proxmox_http_client, nodes.clone()).await {
+        Ok(data) => data,
+        Err(e) => {
+            error!("cannot get lxcs from proxmox: {}", e.to_string());
+            return error_response;
+        }
+    };
+    let lxc_ips = match get_lxc_ips(base_url.as_str(), &data.proxmox_http_client, lxcs).await {
+        Ok(data) => data,
+        Err(e) => {
+            error!("cannot get lxc interfaces from proxmox: {}", e.to_string());
+            return error_response;
+        }
+    };
     let mut targets = Vec::new();
 
     for ip in ips {
         targets.push(format!("[{}]:9100", ip));
+    }
+    for ip in lxc_ips {
+        targets.push(format!("{}:9100", ip))
     }
 
     let target = Target {

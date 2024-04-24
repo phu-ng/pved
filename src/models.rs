@@ -122,3 +122,27 @@ pub struct Labels {
     #[serde(rename = "__meta_prometheus_job")]
     pub(crate) meta_prometheus_job: String,
 }
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct Lxc {
+    pub(crate) status: String,
+    pub(crate) tags: Option<String>,
+    pub(crate) vmid: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct LxcData {
+    pub(crate) data: Vec<Lxc>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub(crate) struct LxcInterface {
+    pub(crate) name: String,
+    hwaddr: String,
+    pub(crate) inet: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct LxcInterfaceData {
+    pub(crate) data: Vec<LxcInterface>,
+}

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::time::Duration;
 use reqwest::{Client, ClientBuilder, Error, header};
-use crate::models::{IpAddress, NetworkInterface, NetworkInterfaceData, NodeData, QemuData};
+use crate::models::{IpAddress, NetworkInterface, NetworkInterfaceData, NodeData, QemuData, LxcInterface, LxcInterfaceData, LxcData};
 use crate::utils::is_public_ipv6;
 
 pub fn default_proxmox_http_client(api_key: &str) -> Client {
@@ -89,13 +89,60 @@ pub async fn get_qemu_ips(base_url: &str, proxmox_http_client: &Client, qemus: H
     return Ok(ipv6s);
 }
 
-pub async fn get_lxcs() {
+pub async fn get_lxcs(base_url: &str, proxmox_http_client: &Client, nodes: Vec<String>) -> Result<HashMap<String, Vec<String>>, Error> {
+    let mut lxcs = HashMap::new();
 
+    for node in nodes {
+        let mut ids = vec![];
+
+        let resp = proxmox_http_client.get(base_url.to_string() + "/nodes/" + node.as_str() + "/lxc")
+            .send()
+            .await?
+            .json::<LxcData>()
+            .await?;
+
+        for lxc in resp.data.into_iter() {
+            if lxc.tags.is_none() {
+                continue;
+            }
+            if lxc.tags.unwrap().contains("watch") && lxc.status.contains("running") {
+                ids.push(lxc.vmid);
+            }
+        }
+
+        lxcs.entry(node.clone()).or_insert(ids);
+    }
+
+    return Ok(lxcs);
+}
+
+pub async fn get_lxc_ips(base_url: &str, proxmox_http_client: &Client, lxcs: HashMap<String, Vec<String>>) -> Result<Vec<String>, Error> {
+    let mut interfaces: Vec<LxcInterface> = vec![];
+
+    for (node, ids) in lxcs {
+        for id in ids.iter() {
+            let resp = proxmox_http_client.get(base_url.to_string() + "/nodes/" + node.as_str() + "/lxc/" + id.as_str() + "/interfaces")
+                .send()
+                .await?
+                .json::<LxcInterfaceData>()
+                .await?;
+
+            interfaces.extend(resp.data);
+        }
+    }
+
+    interfaces.retain(|interface| interface.name.contains("eth") || interface.name.contains("ens"));
+    let mut ipv4: Vec<String> = vec![];
+    for interface in interfaces {
+        ipv4.push(interface.inet.split("/").next().unwrap().to_string());
+    }
+
+    return Ok(ipv4);
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::models::{IpAddress, NetworkInterface, NetworkInterfaceResult, Node, Qemu};
+    use crate::models::{IpAddress, Lxc, NetworkInterface, NetworkInterfaceResult, Node, Qemu};
     use super::*;
 
     #[tokio::test]
@@ -224,5 +271,46 @@ mod tests {
 
         let ips = get_qemu_ips(url.as_str(), &proxmox_http_client, qemu_ids).await.unwrap();
         assert_eq!(ips, vec!["2404:6800:4005:815::200e".to_string(), "2404:6800:4005:815::200d".to_string()])
+    }
+
+    #[tokio::test]
+    async fn test_get_lxcs() {
+        // Request a new server from the pool
+        let mut server = mockito::Server::new_async().await;
+
+        // Use one of these addresses to configure your client
+        let url = server.url();
+        let api_key = "1234";
+        let proxmox_http_client = default_proxmox_http_client(api_key);
+
+        let nodes = vec!["node1".to_string(), "node2".to_string()];
+        let node1_lxc_100 = Lxc { status: "running".to_string(), vmid: "100".to_string(), tags: Some("container;k8s".to_string()) };
+        let node1_lxc_101 = Lxc { status: "running".to_string(), vmid: "101".to_string(), tags: Some("watch;database".to_string()) };
+        let node2_lxc_200 = Lxc { status: "running".to_string(), vmid: "200".to_string(), tags: Some("k8s;watch".to_string()) };
+        let node2_lxc_201 = Lxc { status: "running".to_string(), vmid: "201".to_string(), tags: Some("watch;iot".to_string()) };
+        let node2_lxc_202 = Lxc { status: "stopped".to_string(), vmid: "202".to_string(), tags: Some("watch".to_string()) };
+        let node1_lxcs = LxcData { data: vec![node1_lxc_100, node1_lxc_101] };
+        let node2_lxcs = LxcData { data: vec![node2_lxc_200, node2_lxc_201, node2_lxc_202] };
+
+        server.mock("GET", "/nodes/node1/lxc")
+            .with_status(201)
+            .with_header("content-type", "application/json")
+            .with_header("authorization", "1234")
+            .with_body(serde_json::to_string(&node1_lxcs).unwrap())
+            .create();
+
+        server.mock("GET", "/nodes/node2/lxc")
+            .with_status(201)
+            .with_header("content-type", "application/json")
+            .with_header("authorization", "1234")
+            .with_body(serde_json::to_string(&node2_lxcs).unwrap())
+            .create();
+
+        let mut expected = HashMap::new();
+        expected.entry("node1".to_string()).or_insert(vec!["101".to_string()]);
+        expected.entry("node2".to_string()).or_insert(vec!["200".to_string(), "201".to_string()]);
+
+        let ids = get_lxcs(url.as_str(), &proxmox_http_client, nodes).await.unwrap();
+        assert_eq!(ids, expected)
     }
 }
