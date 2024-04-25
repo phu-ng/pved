@@ -27,6 +27,9 @@ pub async fn get_nodes(base_url: &str, proxmox_http_client: &Client) -> reqwest:
 
     let mut nodes = vec![];
     for node in resp.data.into_iter() {
+        if node.status != "online" {
+            continue;
+        }
         nodes.push(node.node)
     }
 
@@ -157,11 +160,12 @@ mod tests {
         // Create a mock
         let node1 = Node::new("online".to_string(), "node/k4".to_string(), "k4".to_string(), "node".to_string());
         let node2 = Node::new("online".to_string(), "node/x300".to_string(), "x300".to_string(), "node".to_string());
-        let nodes = vec![node1, node2];
+        let node3 = Node::new("offline".to_string(), "node/x301".to_string(), "x301".to_string(), "node".to_string());
+        let nodes = vec![node1, node2, node3];
         let node_data = NodeData::new(nodes);
 
         server.mock("GET", "/nodes")
-            .with_status(201)
+            .with_status(200)
             .with_header("content-type", "application/json")
             .with_body(serde_json::to_string(&node_data).unwrap())
             .create();

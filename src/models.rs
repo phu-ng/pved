@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Node {
     #[allow(dead_code)]
-    status: String,
+    pub(crate) status: String,
     id: String,
     pub(crate) node: String,
     r#type: String,
