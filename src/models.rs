@@ -146,3 +146,53 @@ pub(crate) struct LxcInterface {
 pub struct LxcInterfaceData {
     pub(crate) data: Vec<LxcInterface>,
 }
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+#[serde(untagged)]
+pub enum VmId {
+    Text(String),
+    Int(u32),
+}
+
+impl VmId {
+    pub fn to_string(&self) -> String {
+        match *self {
+            VmId::Text(ref text) => text.clone(), // If it's already a String, return a clone
+            VmId::Int(int) => int.to_string(), // Convert the integer to a String
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub struct Vm {
+    pub(crate) status: String,
+    pub(crate) name: String,
+    pub(crate) tags: Option<String>,
+    #[serde(rename = "vmid")]
+    pub(crate) vm_id: VmId,
+    #[serde(rename = "type")]
+    pub(crate) vm_type: Option<String>
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct VmData {
+    pub(crate) data: Vec<Vm>,
+}
+
+#[derive(Debug)]
+pub enum VmType {
+    LXC,
+    QEMU,
+}
+
+impl VmType {
+    pub fn as_str(&self) -> &'static str {
+        match *self {
+            VmType::LXC => "lxc",
+            VmType::QEMU => "qemu",
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {}
