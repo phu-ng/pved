@@ -4,14 +4,15 @@ mod utils;
 
 use actix_web::{get, App, HttpServer, HttpResponse};
 use actix_web::http::header::{ContentType};
-use crate::models::{Target, Labels};
+use crate::models::{Target, Labels, VmType};
 use std::env;
 use actix_web::middleware::Logger;
-use reqwest::{Client};
+use reqwest::Client;
 use log::{error, info};
 use serde_json::json;
-use proxmox::{get_nodes, get_qemus, get_qemu_ips};
-use crate::proxmox::{get_lxc_ips, get_lxcs};
+use proxmox::get_nodes;
+use crate::proxmox::get_vm;
+use crate::utils::generate_fqdn;
 
 #[derive(Clone)]
 struct AppState {
@@ -65,6 +66,7 @@ async fn healthz() -> HttpResponse {
 async fn discover(data: actix_web::web::Data<AppState>) -> HttpResponse {
     // TODO: handle error khi khong tim thay bien - bo unwrap()
     let base_url = env::var("BASE_URL").unwrap();
+    let domain = env::var("DOMAIN").unwrap_or("phu.homes".to_string());
 
     let error_response = HttpResponse::InternalServerError()
         .insert_header(("PoweredBy", "Rusty"))
@@ -77,54 +79,47 @@ async fn discover(data: actix_web::web::Data<AppState>) -> HttpResponse {
             return error_response;
         }
     };
-    let qemus = match get_qemus(base_url.as_str(), &data.proxmox_http_client, nodes.clone()).await {
-        Ok(data) => data,
-        Err(e) => {
-            error!("cannot get qemus from proxmox: {}", e.to_string());
-            return error_response;
-        }
-    };
-    let ips = match get_qemu_ips(base_url.as_str(), &data.proxmox_http_client, qemus).await {
-        Ok(data) => data,
-        Err(e) => {
-            error!("cannot get qemus network interfaces from proxmox: {}", e.to_string());
-            return error_response;
-        }
-    };
-    let lxcs = match get_lxcs(base_url.as_str(), &data.proxmox_http_client, nodes.clone()).await {
-        Ok(data) => data,
-        Err(e) => {
-            error!("cannot get lxcs from proxmox: {}", e.to_string());
-            return error_response;
-        }
-    };
-    let lxc_ips = match get_lxc_ips(base_url.as_str(), &data.proxmox_http_client, lxcs).await {
-        Ok(data) => data,
-        Err(e) => {
-            error!("cannot get lxc interfaces from proxmox: {}", e.to_string());
-            return error_response;
-        }
-    };
-    let mut targets = Vec::new();
 
-    for ip in ips {
-        targets.push(format!("[{}]:9100", ip));
-    }
-    for ip in lxc_ips {
-        targets.push(format!("{}:9100", ip))
+    let mut vms = vec![];
+    for node in nodes {
+        match get_vm(base_url.as_str(), &data.proxmox_http_client, &node, VmType::LXC).await {
+            Ok(data) => vms.extend(data),
+            Err(e) => {
+                error!("cannot get vms from proxmox: {}", e.to_string());
+                return error_response;
+            }
+        };
+
+        match get_vm(base_url.as_str(), &data.proxmox_http_client, &node, VmType::QEMU).await {
+            Ok(data) => vms.extend(data),
+            Err(e) => {
+                error!("cannot get vms from proxmox: {}", e.to_string());
+                return error_response;
+            }
+        };
     }
 
-    let target = Target {
-        targets,
-        labels: Labels {
-            meta_prometheus_job: "proxmox".to_string()
-        },
-    };
+    let mut targets = vec![];
+    for vm in vms {
+        let fqdn = generate_fqdn(&vm.name, &domain);
+
+        let fqdns = vec![format!("{}:9100", fqdn)];
+        let target = Target {
+            targets: fqdns,
+            labels: Labels {
+                meta_prometheus_job: "proxmox".to_string(),
+                vm_type: vm.vm_type.unwrap_or("qemu".to_string()),
+                hostname: vm.name,
+            },
+        };
+
+        targets.push(target);
+    }
 
     HttpResponse::Ok()
         .content_type(ContentType::json())
         .insert_header(("Powered-By", "Rusty"))
-        .json(vec![target])
+        .json(targets)
 }
 
 // TODO: Add tests

@@ -1,18 +1,5 @@
-pub fn is_public_ipv6(ipv6: &str) -> bool {
-    let private_prefixes = vec![
-        "fd",
-        "fc",
-        "fe80",
-        "::",
-    ];
-
-    for prefix in private_prefixes {
-        if ipv6.starts_with(prefix) {
-            return false;
-        }
-    }
-
-    return true;
+pub fn generate_fqdn(name: &str, domain: &str) -> String {
+    format!("{}.{}", name, domain)
 }
 
 #[cfg(test)]
@@ -30,5 +17,10 @@ mod tests {
         assert_eq!(is_public_ipv6(ipv6_addr2), false);
         assert_eq!(is_public_ipv6(ipv6_addr3), false);
         assert_eq!(is_public_ipv6(ipv6_addr4), false);
+    }
+
+    #[test]
+    fn test_get_ip() {
+        println!("{:?}", generate_fqdn("pihole", "phu.homes."))
     }
 }

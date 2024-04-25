@@ -121,6 +121,9 @@ pub struct Target {
 pub struct Labels {
     #[serde(rename = "__meta_prometheus_job")]
     pub(crate) meta_prometheus_job: String,
+    #[serde(rename = "type")]
+    pub(crate) vm_type: String,
+    pub(crate) hostname: String
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -152,15 +155,6 @@ pub struct LxcInterfaceData {
 pub enum VmId {
     Text(String),
     Int(u32),
-}
-
-impl VmId {
-    pub fn to_string(&self) -> String {
-        match *self {
-            VmId::Text(ref text) => text.clone(), // If it's already a String, return a clone
-            VmId::Int(int) => int.to_string(), // Convert the integer to a String
-        }
-    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
