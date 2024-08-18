@@ -34,7 +34,7 @@ RUN apt-get update \
     && apt-get install --no-install-recommends -y openssl ca-certificates \
     && apt-get clean autoclean \
     && rm -rf /var/lib/{apt,dpkg,cache,log}/
-COPY --chown=$USER:$USER target/release/pved ./
+COPY --chown=$USER:$USER --chmod=755 target/release/pved ./
 
 USER $USER
 ENTRYPOINT ["/bin/bash", "-c", "/home/$USER/pved"]
