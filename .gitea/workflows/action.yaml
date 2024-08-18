@@ -1,0 +1,61 @@
+name: PVED Pipeline
+run-name: ${{ gitea.actor }} is deploying applications 🚀
+on:
+  create:
+    tags:
+      - v*
+
+env:
+  IMAGE_REGISTRY: registry.phu.homes
+  NEXUS_CI_PASSWORD: ${{ secrets.NEXUS_CI_PASSWORD }}
+  NEXUS_CI_USER: ${{ vars.NEXUS_CI_USER }}
+  RELEASE_BIN_PATH: ${{ github.workspace }}/target/release/pved
+
+jobs:
+  Build Code:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+
+      - name: Install latest stable
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          cache: true
+
+      - name: Cache cargo build
+        uses: actions/cache@v3
+        with:
+          path: |
+            target/
+          key: rust
+
+      - name: Build with released profile
+        run: cargo build --release
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          path: "${{ env.RELEASE_BIN_PATH }}"
+          name: binary
+          retention-days: 1
+
+  Build Image:
+    runs-on: podman
+    needs: Build Code
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+      - uses: actions/download-artifact@v3
+        with:
+          name: binary
+          path: "${{ env.RELEASE_BIN_PATH }}"
+      - name: Log in to Nexus
+        run: echo $NEXUS_CI_PASSWORD | podman login --username $NEXUS_CI_USER $IMAGE_REGISTRY --password-stdin
+      - name: Create manifest
+        run: podman manifest create $IMAGE_REGISTRY/pved:$GITHUB_REF_NAME
+      - name: Build image for multiple platform
+        run: podman build --platform linux/amd64 --manifest $IMAGE_REGISTRY/pved:$GITHUB_REF_NAME .
+      - name: Push to Nexus
+        run: podman manifest push $IMAGE_REGISTRY/pved:$GITHUB_REF_NAME
